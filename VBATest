@@ -1,32 +1,67 @@
-Sub Extract_TaskInfo()
+Sub Get_Material_Data()
     Dim wsMain As Worksheet: Set wsMain = ActiveSheet
-    Dim taskInfoPath As String, wbTask As Workbook, wsTask As Worksheet
+    Dim matPath As String
+    Dim sLine As String
+    Dim fNum As Integer
+    Dim reLine As Object, reToken As Object, matches As Object
+    Dim foundLines(1 To 10) As String
+    Dim foundCount As Long
+    Dim i As Long, j As Long
+    Dim vals(1 To 5) As Double
+    Dim outRow As Long
 
-    taskInfoPath = Trim(wsMain.Range("D1").Value)
-
-    If taskInfoPath = "" Then
-        MsgBox "Cell D1 (Task info) đang trống!", vbCritical
+    matPath = Trim(wsMain.Range("D4").Value)
+    If matPath = "" Or Dir(matPath) = "" Then
+        MsgBox "Material file path in D4 không hợp lệ!", vbCritical
         Exit Sub
     End If
 
-    Application.ScreenUpdating = False: Application.DisplayAlerts = False
+    ' Pattern nhận diện 1 dòng dữ liệu: đúng 5 số khoa học 10 ký tự dính liền nhau
+    Set reLine = CreateObject("VBScript.RegExp")
+    reLine.Pattern = "^(0\.\d{4}E[+-]\d{2}){5}$"
 
-    On Error Resume Next
-    Set wbTask = Workbooks.Open(taskInfoPath, 0, True)
-    On Error GoTo 0
+    ' Pattern để tách từng số trong dòng đã match
+    Set reToken = CreateObject("VBScript.RegExp")
+    reToken.Global = True
+    reToken.Pattern = "0\.\d{4}E[+-]\d{2}"
 
-    If wbTask Is Nothing Then
-        Application.DisplayAlerts = True: Application.ScreenUpdating = True
-        MsgBox "Không mở được file Task Info: " & taskInfoPath, vbCritical
+    foundCount = 0
+    fNum = FreeFile
+    Open matPath For Input As #fNum
+    Do While Not EOF(fNum)
+        Line Input #fNum, sLine
+        sLine = Trim(sLine)
+        If reLine.Test(sLine) Then
+            foundCount = foundCount + 1
+            foundLines(foundCount) = sLine
+        End If
+    Loop
+    Close #fNum
+
+    If foundCount < 4 Then
+        MsgBox "Chỉ tìm thấy " & foundCount & " dòng khớp mẫu (cần 4: Tension/Pressure/Bending/Shear)!" & vbCrLf & _
+               "Kiểm tra lại file: " & matPath, vbExclamation
         Exit Sub
     End If
 
-    Set wsTask = wbTask.Sheets("パワートレイン構造解析")
-    wsMain.Range("P1").Value = Trim(wsTask.Range("D2").Value) ' No.
-    wsMain.Range("P2").Value = Trim(wsTask.Range("D3").Value) ' 件名
-    wsMain.Range("P3").Value = Trim(wsTask.Range("D4").Value) ' 機種名
-    wbTask.Close False
+    ' Thứ tự cố định theo file MATGEN: Tension, Pressure, Bending, Shear
+    outRow = 12 ' Tension nằm ở row 12 theo bảng đích (AA12:AE15)
 
-    Application.DisplayAlerts = True: Application.ScreenUpdating = True
-    MsgBox "Task info updated!", vbInformation
+    For i = 1 To 4
+        Set matches = reToken.Execute(foundLines(i))
+        If matches.Count <> 5 Then
+            MsgBox "Dòng '" & foundLines(i) & "' không tách được đủ 5 số!", vbCritical
+            Exit Sub
+        End If
+        For j = 0 To 4
+            vals(j + 1) = Val(matches(j).Value)
+        Next j
+        wsMain.Cells(outRow + i - 1, "AA").Value = vals(1) ' Ultimate
+        wsMain.Cells(outRow + i - 1, "AB").Value = vals(2) ' Yield
+        wsMain.Cells(outRow + i - 1, "AC").Value = vals(3) ' Pulsating
+        wsMain.Cells(outRow + i - 1, "AD").Value = vals(4) ' Alternating
+        wsMain.Cells(outRow + i - 1, "AE").Value = vals(5) ' Spec.size
+    Next i
+
+    MsgBox "Material data extracted!", vbInformation
 End Sub
