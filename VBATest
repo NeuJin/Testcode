@@ -16,16 +16,14 @@ Sub Check()
 
     Application.ScreenUpdating = False: Application.DisplayAlerts = False
 
-    ' --- Extract Task Info (No. / 件名 / 機種名) from B1 hyperlink ---
+    ' --- Extract Task Info (No. / 件名 / 機種名) from D1 ---
     Dim taskInfoPath As String, wbTask As Workbook, wsTask As Worksheet
 
-    On Error Resume Next
-    taskInfoPath = wsMain.Range("B1").Hyperlinks(1).Address
-    On Error GoTo 0
+    taskInfoPath = Trim(wsMain.Range("D1").Value)
 
     If taskInfoPath = "" Then
         Application.DisplayAlerts = True: Application.ScreenUpdating = True
-        MsgBox "Cell B1 không có Hyperlink trỏ tới file Task Info!", vbCritical
+        MsgBox "Cell D1 (Task info) đang trống!", vbCritical
         Exit Sub
     End If
 
@@ -77,6 +75,7 @@ Sub Check()
         wsMain.Cells(outRow, "O").ClearContents: wsMain.Cells(outRow, "P").ClearContents
         wsMain.Cells(outRow, "P").Font.ColorIndex = xlAutomatic: wsMain.Cells(outRow, "P").Font.Bold = False
 
+        ' Pull Sample (With Arrow Check)
         If dictSam.exists(k) Then
             If dictSam(k).Count > 0 Then
                 wsMain.Cells(outRow, "O").Value = GetValueWithArrowCheck(wsSam, CLng(dictSam(k)(1)), sCol)
@@ -84,6 +83,7 @@ Sub Check()
             End If
         End If
 
+        ' Pull Request (With Arrow Check)
         If dictReq.exists(k) Then
             If dictReq(k).Count > 0 Then
                 matchedRow = dictReq(k)(1)
