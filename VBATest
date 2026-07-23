@@ -1,67 +1,26 @@
-Sub Get_Material_Data()
-    Dim wsMain As Worksheet: Set wsMain = ActiveSheet
-    Dim matPath As String
-    Dim sLine As String
-    Dim fNum As Integer
-    Dim reLine As Object, reToken As Object, matches As Object
-    Dim foundLines(1 To 10) As String
-    Dim foundCount As Long
-    Dim i As Long, j As Long
-    Dim vals(1 To 5) As Double
-    Dim outRow As Long
-
-    matPath = Trim(wsMain.Range("D4").Value)
-    If matPath = "" Or Dir(matPath) = "" Then
-        MsgBox "Material file path in D4 không hợp lệ!", vbCritical
-        Exit Sub
-    End If
-
-    ' Pattern nhận diện 1 dòng dữ liệu: đúng 5 số khoa học 10 ký tự dính liền nhau
-    Set reLine = CreateObject("VBScript.RegExp")
-    reLine.Pattern = "^(0\.\d{4}E[+-]\d{2}){5}$"
-
-    ' Pattern để tách từng số trong dòng đã match
-    Set reToken = CreateObject("VBScript.RegExp")
-    reToken.Global = True
-    reToken.Pattern = "0\.\d{4}E[+-]\d{2}"
-
-    foundCount = 0
-    fNum = FreeFile
-    Open matPath For Input As #fNum
-    Do While Not EOF(fNum)
-        Line Input #fNum, sLine
-        sLine = Trim(sLine)
-        If reLine.Test(sLine) Then
-            foundCount = foundCount + 1
-            foundLines(foundCount) = sLine
-        End If
-    Loop
-    Close #fNum
-
-    If foundCount < 4 Then
-        MsgBox "Chỉ tìm thấy " & foundCount & " dòng khớp mẫu (cần 4: Tension/Pressure/Bending/Shear)!" & vbCrLf & _
-               "Kiểm tra lại file: " & matPath, vbExclamation
-        Exit Sub
-    End If
-
-    ' Thứ tự cố định theo file MATGEN: Tension, Pressure, Bending, Shear
-    outRow = 12 ' Tension nằm ở row 12 theo bảng đích (AA12:AE15)
-
-    For i = 1 To 4
-        Set matches = reToken.Execute(foundLines(i))
-        If matches.Count <> 5 Then
-            MsgBox "Dòng '" & foundLines(i) & "' không tách được đủ 5 số!", vbCritical
-            Exit Sub
-        End If
-        For j = 0 To 4
-            vals(j + 1) = Val(matches(j).Value)
-        Next j
-        wsMain.Cells(outRow + i - 1, "AA").Value = vals(1) ' Ultimate
-        wsMain.Cells(outRow + i - 1, "AB").Value = vals(2) ' Yield
-        wsMain.Cells(outRow + i - 1, "AC").Value = vals(3) ' Pulsating
-        wsMain.Cells(outRow + i - 1, "AD").Value = vals(4) ' Alternating
-        wsMain.Cells(outRow + i - 1, "AE").Value = vals(5) ' Spec.size
-    Next i
-
-    MsgBox "Material data extracted!", vbInformation
-End Sub
+•	Part 1:
+•	1-1 Template report (8h) > Fukuda
+•	1-2 Auto report, input > report (4h) > check
+•	1-3 Auto report, excel summary (4h) ~6/16-17 > 1 day > 7/23 12:00
+•	1-4 Auto report, figure 2h/day > check
+•	1-5-1 Check mesh error > shared-node > done
+•	Manual: 1h > 5’ (2h/day, 7/24~)
+•	1-5-2 Check surface contact, pick correct or not.
+•	Manual: 1h > 5’ (2h/day, 7/24~)
+•	1-6 Update TCL 2025
+•	1-7 Update HM 2025 Operation
+•	Part2: 6h/day
+Mesh quality, skill: correct + speed
+•	2-1 Quality: match with SES
+•	2-2 HW Conrod STR
+•	(2h) Map-guideline for meshing requirement > 7/23 15:00
+•	(4h) detail as much as possible (list procedure step by step) > 7/24 10:00
+•	define problem (self-problem)
+•	Longest time > detail procedure by Hypermesh
+•	(4h) Review (by all members) > 7/24
+•	(4h) Improvement (suggestion) > 7/24
+•	(32h) Speed 40h > 32h > 24h ~ 7/31
+•	(16h) Create ppt file (draft): Mesh quality, guide for each part, location, each procedure. 
+•	Mesh map guideline
+•	Hypermesh operation
+•	2-3 JPT Crank Case xxh > yyh >8h
