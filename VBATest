@@ -44,6 +44,7 @@ Sub Check()
     wbTask.Close False
 
     Set specCols = GetSpecColCollection(wsMain)
+    Debug.Print "specCols.Count = " & specCols.Count   ' <-- DEBUG
 
     ' --- Load Sample ---
     Set wbSam = Workbooks.Open(samPath, 0, True): Set wsSam = wbSam.Sheets(sheetName)
@@ -55,6 +56,7 @@ Sub Check()
             dictSam(k).Add r
         End If
     Next r
+    Debug.Print "dictSam.Count = " & dictSam.Count      ' <-- DEBUG
 
     ' --- Load Request ---
     Set wbReq = Workbooks.Open(reqPath, 0, True): Set wsReq = wbReq.Sheets(sheetName)
@@ -66,9 +68,11 @@ Sub Check()
             dictReq(k).Add r
         End If
     Next r
+    Debug.Print "dictReq.Count = " & dictReq.Count       ' <-- DEBUG
 
     ' --- Compare ---
     outRow = 9
+    Debug.Print "wsMain key row9 = [" & CreateKey(wsMain, 9, specCols) & "]"   ' <-- DEBUG
     Do While wsMain.Cells(outRow, "C").Value <> ""
         k = CreateKey(wsMain, outRow, specCols)
         wsMain.Cells(outRow, "N").ClearContents: wsMain.Cells(outRow, "N").Interior.ColorIndex = xlNone
