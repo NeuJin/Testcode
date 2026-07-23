@@ -1,0 +1,53 @@
+Sub Run_Smart_Update()
+Dim pptApp As Object, pptPres As Object
+Dim ws As Worksheet: Set ws = ActiveSheet
+Dim anchorCell As Range, firstAddress As String
+Dim pptPath As String, pptSavePath As String, pptTableName As String, excelRangeAddr As String
+Dim slideIdx As Integer
+
+pptPath = Trim(ws.Range("F2").Value)
+Set pptPres = OpenPPTPresentation(pptPath)
+If pptPres Is Nothing Then Exit Sub
+
+Application.ScreenUpdating = False
+
+' Scan Column O starting from Row 32
+With ws.Range("O5:O" & ws.Rows.Count)
+    Set anchorCell = .Find("Table*", LookIn:=xlValues, LookAt:=xlPart)
+
+    If Not anchorCell Is Nothing Then
+        firstAddress = anchorCell.Address
+        Do
+            slideIdx = Val(ws.Cells(anchorCell.Row, "N").Value)
+            pptTableName = Trim(anchorCell.Value)
+            excelRangeAddr = Trim(ws.Cells(anchorCell.Row, "P").Value)
+
+            If slideIdx > 0 And excelRangeAddr <> "" Then
+                Call UpdatePPTTable(ws, slideIdx, pptTableName, excelRangeAddr, pptPres)
+            End If
+
+            Set anchorCell = .FindNext(anchorCell)
+        Loop While Not anchorCell Is Nothing And anchorCell.Address <> firstAddress
+    End If
+End With
+
+' --- Save updated presentation to path in F3 ---
+pptSavePath = Trim(ws.Range("F3").Value)
+If pptSavePath = "" Then
+    Application.ScreenUpdating = True
+    MsgBox "Cell F3 (Updated PPT path) is empty — cannot save!", vbCritical
+    Exit Sub
+End If
+
+On Error Resume Next
+pptPres.SaveAs pptSavePath, 24 ' 24 = ppSaveAsOpenXMLPresentation (.pptx)
+If Err.Number <> 0 Then
+    Application.ScreenUpdating = True
+    MsgBox "Failed to save PPT to: " & pptSavePath & vbCrLf & Err.Description, vbCritical
+    Exit Sub
+End If
+On Error GoTo 0
+
+Application.ScreenUpdating = True
+MsgBox "Update completed! Saved to: " & pptSavePath & vbCrLf & "Now you can run Recheck.", vbInformation
+End Sub
