@@ -1,0 +1,46 @@
+# Prompt: Generate PPTX from Japanese PDF using an existing template
+
+## Context
+I have two files:
+1. A **template PPTX** (in English) that demonstrates my understanding of a source document — it has a fixed structure (slide order, section types, layout).
+2. A **new source PDF** (in Japanese) that I need summarized and presented in the **same structure and style** as the template.
+
+Your task: produce a new PPTX file, in English, following the template's structure, but populated with content extracted from the new PDF.
+
+## Step-by-step instructions
+
+**Step 1 — Analyze the template**
+Read the template PPTX and extract its schema: for each slide, note the slide number, title/heading, the type of content it holds (executive summary, key findings, comparison table, diagram, conclusion, etc.), and the layout pattern (bullet count, columns, placeholders). Output this schema as a short structured list before doing anything else, so I can confirm it's correct.
+
+**Step 2 — Extract text from the PDF**
+- If the PDF has a text layer (not scanned), extract text directly — do not OCR.
+- If it's a scanned PDF, OCR it using a method that handles Japanese (Kanji/Hiragana/Katakana) accurately — do not rely on Tesseract's default English model.
+- Preserve section headers/structure from the original document if present.
+
+**Step 3 — Map PDF content to the template schema**
+Read the extracted Japanese text and, for each slide in the schema from Step 1, extract/summarize the corresponding content **in Japanese first** (do not translate yet). Keep technical terms and figures exact — do not paraphrase numbers, specs, or technical terminology loosely.
+
+**Step 4 — Translate the mapped content to English**
+Translate only the already-structured, per-slide content (not the whole raw document) into English. Preserve technical/domain-specific terminology precisely; flag any term you're unsure how to translate rather than guessing.
+
+**Step 5 — Generate the new PPTX**
+Use the original template file as the base (do not build slides from scratch). Keep the original layout, theme, fonts, and master slides untouched — only replace the text content in each placeholder with the new translated content. If translated text is significantly longer than the placeholder was designed for (common with Japanese→English expansion), shorten it to fit rather than letting it overflow, and flag which slides needed shortening.
+
+**Step 6 — Self-check before delivering**
+Before finalizing, verify:
+- Does each slide's content match what the schema in Step 1 expected?
+- Are technical terms and numbers consistent with the source PDF?
+- Does any text overflow its placeholder?
+- List any assumptions you made or any part of the source PDF you were unsure how to summarize.
+
+## Output
+Deliver:
+1. The schema extracted in Step 1 (for my review)
+2. The final PPTX file
+3. A short list of flags/assumptions from Step 6
+
+## Constraints
+- Do not skip Step 1 — confirm the schema before generating content.
+- Do not translate the entire raw PDF; only translate the structured, per-slide summary.
+- Do not alter the template's visual design — content only.
+- If any information needed for a slide is missing from the PDF, say so explicitly rather than inventing content.
