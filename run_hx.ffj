@@ -1,0 +1,10 @@
+::uplevel #0 {
+    ::after 3000 {
+        if {[::catch {::source "D:/femfat_probe/hx_export.tcl"} ::hx_err]} {
+            set ::ef [::open "D:/femfat_probe/hx_err.txt" w]
+            ::puts $::ef $::hx_err
+            ::puts $::ef $::errorInfo
+            ::close $::ef
+        }
+    }
+}
