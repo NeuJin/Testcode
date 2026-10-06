@@ -1,3 +1,0 @@
-set f [open "D:/femfat_probe/hello.txt" w]
-puts $f "hello from ffj"
-close $f
