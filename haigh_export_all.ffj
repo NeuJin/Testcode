@@ -3,8 +3,8 @@
 # CACH DUNG: mo FEMFAT -> vao Output module -> nap fps -> (vao trang Visualization)
 #            -> File > Append... -> chon file nay. Khong can thao tac gi them.
 # Quy tac co dinh: Critical Point (cham do) luon BAT; luon xuat anh FULL (winop).
-# Danh sach node: tu dong lay tu fps (xem hx_discovery trong hx_log.txt);
-# neu khong lay duoc, dien tay vao ::hx_nodes_manual.
+# Danh sach node: doc tu file .ffj nam CUNG THU MUC voi fps (neu thieu se hien popup huong dan);
+# hoac dien tay vao ::hx_nodes_manual.
 # ======================================================================
 ::uplevel #0 {
 # ---------------- TUY CHON (co the sua) ----------------
@@ -173,87 +173,109 @@ proc ::hx_one {node} {
 
 
 # ---------- lay danh sach node tu fps ----------
-proc ::hx_as_nodes {val} {
+# cac so 5-9 chu so (node ID) trong mot chuoi
+proc ::hx_num_tokens {val} {
     set out {}
-    if {[::catch {::llength $val}]} { return {} }
-    foreach t $val {
-        if {![::regexp {^[0-9]{3,9}$} $t]} { return {} }
-        lappend out $t
+    foreach t [::regexp -all -inline {[0-9]{5,9}} $val] {
+        if {[::lsearch -exact $out $t] < 0} { lappend out $t }
     }
     return $out
 }
-# cach 1: bien cua doc0 co ten chua "node" va gia tri la danh sach so
-proc ::hx_nodes_from_vars {} {
-    set names {}
-    ::catch {set names [::doc0 info variable]}
-    ::hx_log "discovery: doc0 co [::llength $names] bien"
+# cach 1: quet moi bien cua mot doi tuong Itcl, lay bien chua danh sach node dai nhat
+proc ::hx_scan_obj {obj minCount} {
     set best {}
-    set bestname ""
+    set names {}
+    ::catch {set names [$obj info variable]}
+    ::hx_log "discovery: quet $obj ([::llength $names] bien)"
     foreach v $names {
-        if {![::regexp -nocase {node} $v]} continue
-        if {[::catch {::doc0 info variable $v -value} val]} continue
-        ::hx_log "discovery: var $v = [::string range $val 0 160]"
-        set nums [::hx_as_nodes $val]
-        if {[::llength $nums] > [::llength $best]} { set best $nums; set bestname $v }
+        if {[::catch {$obj info variable $v -value} val]} continue
+        if {[::string length $val] > 300000} continue
+        set nums [::hx_num_tokens $val]
+        if {[::llength $nums] >= $minCount} {
+            ::hx_log "discovery:   $v -> [::llength $nums] so, dau: [::lrange $nums 0 5]"
+            if {[::llength $nums] > [::llength $best]} { set best $nums }
+        }
     }
-    if {[::llength $best] > 0} { ::hx_log "discovery: chon bien $bestname ([::llength $best] node)" }
     return $best
 }
-# cach 2: bam mui ten spinbox o hop thoai Haigh de duyet qua cac node co ket qua
+proc ::hx_entry_val {si} {
+    set v ""
+    ::catch {set v [$si.entry get]}
+    return [::string trim $v]
+}
+# buoc spinbox 1 lan bang ham m (incrCmd/decrCmd), tra ve gia tri o nhap sau do
+proc ::hx_step {si m} {
+    set rc [::catch {$si $m} msg]
+    if {$rc} {
+        set rc [::catch {$si $m 1} msg2]
+        if {$rc} { ::hx_log "discovery: $m loi: $msg | $msg2"; return "" }
+    }
+    ::update
+    ::after 300
+    ::update
+    return [::hx_entry_val $si]
+}
+# cach 2: duyet lien tiep bang incrCmd/decrCmd cua spinbox: xuong den dau danh sach, roi len het
 proc ::hx_nodes_from_spinbox {} {
     set si .resultHaighDiagramDialog.childsite.nodeSelector.si01
-    set e $si.entry
-    set fns {}
-    ::catch {set fns [$si info function]}
-    ::hx_log "discovery: spinbox functions: $fns"
-    set cands {}
-    foreach f $fns {
-        set short [::lindex [::split $f ":"] end]
-        if {[::regexp -nocase {^(up|down|next|prev|spinup|spindown|increment|decrement|stepup|stepdown|inc|dec)$} $short]} {
-            lappend cands $short
-        }
+    set start [::hx_entry_val $si]
+    foreach m {incrCmd decrCmd} {
+        ::catch {::hx_log "discovery: $m args = [$si info function ::Femfat::SpinBox::$m -args]"}
     }
-    set start ""
-    ::catch {set start [$e get]}
-    ::hx_log "discovery: node hien tai=$start, ham tang=$cands"
-    foreach m $cands {
-        if {![::regexp -nocase {up|next|inc} $m]} continue
-        set res {}
-        lappend res $start
-        set seen [list $start]
-        set prev $start
-        set plus1 0
-        for {set i 0} {$i < $::hx_max_nodes} {incr i} {
-            if {[::catch {$si $m} msg]} { ::hx_log "discovery: $m loi: $msg"; break }
-            ::update
-            ::after 250
-            ::update
-            set cur ""
-            ::catch {set cur [$e get]}
-            if {$cur eq "" || [::lsearch -exact $seen $cur] >= 0} break
-            if {[::string is integer -strict $cur] && [::string is integer -strict $prev] && $cur == $prev + 1} {
-                incr plus1
-                if {$plus1 >= 3} { ::hx_log "discovery: $m chi tang +1, khong phai danh sach node"; set res {}; break }
-            } else { set plus1 0 }
-            lappend res $cur
-            lappend seen $cur
-            set prev $cur
-        }
-        if {[::llength $res] > 1} {
-            ::hx_log "discovery: duyet bang $m duoc [::llength $res] node"
-            return $res
-        }
+    ::hx_log "discovery: node hien tai=$start"
+    # pha 1: di xuong
+    set seen [list $start]
+    set prev $start
+    set plus1 0
+    set low $start
+    for {set i 0} {$i < $::hx_max_nodes} {incr i} {
+        set cur [::hx_step $si decrCmd]
+        if {$cur eq "" || [::lsearch -exact $seen $cur] >= 0} break
+        if {[::string is integer -strict $cur] && [::string is integer -strict $prev] && $cur == $prev - 1} {
+            incr plus1
+            if {$plus1 >= 3} { ::hx_log "discovery: decrCmd chi giam 1 moi lan, khong phai duyet danh sach node"; return {} }
+        } else { set plus1 0 }
+        lappend seen $cur
+        set prev $cur
+        set low $cur
     }
-    return {}
+    ::hx_log "discovery: dau danh sach (thap nhat) = $low"
+    # quay ve diem thap nhat roi di len
+    set res [list $low]
+    set seenU [list $low]
+    set prev $low
+    ::catch {$si.entry delete 0 end; $si.entry insert 0 $low; $si apply}
+    ::update
+    for {set i 0} {$i < $::hx_max_nodes} {incr i} {
+        set cur [::hx_step $si incrCmd]
+        if {$cur eq "" || [::lsearch -exact $seenU $cur] >= 0} break
+        lappend res $cur
+        lappend seenU $cur
+    }
+    ::hx_log "discovery: duyet duoc [::llength $res] node bang spinbox"
+    return $res
 }
 proc ::hx_discover {} {
     if {[::llength $::hx_nodes_manual] > 0} {
         ::hx_log "discovery: dung danh sach thu cong"
         return $::hx_nodes_manual
     }
-    set n [::hx_nodes_from_vars]
-    if {[::llength $n] > 0} { return $n }
+    set d .resultHaighDiagramDialog
+    set names {}
+    ::catch {set names [::doc0 info variable]}
+    set short {}
+    foreach v $names { lappend short [::lindex [::split $v :] end] }
+    ::hx_log "discovery: bien doc0: $short"
+    # 1a) doi tuong hop thoai Haigh / o chon node
+    foreach obj [list $d.childsite.nodeSelector.si01 $d.childsite.nodeSelector $d] {
+        set n [::hx_scan_obj $obj 2]
+        if {[::llength $n] > 0} { ::hx_log "discovery: chon danh sach tu $obj"; return $n }
+    }
+    # 1b) duyet bang spinbox
     set n [::hx_nodes_from_spinbox]
+    if {[::llength $n] > 0} { return $n }
+    # 1c) cuoi cung: quet doc0
+    set n [::hx_scan_obj ::doc0 3]
     return $n
 }
 
@@ -281,7 +303,7 @@ proc ::hx_run {} {
     ::hx_log "dialog is up"
     ::catch {$ns.rbs2.rb2 invoke}
     ::update
-    set ::hx_nodes [::hx_discover]
+    if {[::llength $::hx_nodes] == 0} { set ::hx_nodes [::hx_discover] }
     ::hx_log "NODE LIST ([::llength $::hx_nodes]): $::hx_nodes"
     if {[::llength $::hx_nodes] == 0} {
         ::hx_log "FATAL\tkhong lay duoc danh sach node: dien tay vao ::hx_nodes_manual dau file ffj"
@@ -320,6 +342,74 @@ proc ::hx_find_fps {} {
     }
     return ""
 }
+# ---------- doc node tu file ffj nam cung thu muc voi fps ----------
+# Dinh dang ffj cua FEMFAT: GUI_Group:NodeLabelFrom/To <node> ... GUI_Group:Add (them vao nhom dang chon).
+# Chi lay node duoc them khi nhom hien tai la "DETAILED RESULTS"; lenh GUI_Group:DetailedResultGroup
+# cung tinh la them cap From/To dang cho vao nhom nay. Nhom khac (vi du Dummy) bi bo qua.
+proc ::hx_nodes_in_ffj {file} {
+    if {[::catch {set fh [::open $file r]; set txt [::read $fh]; ::close $fh}]} { return {} }
+    set res {}
+    set grp ""
+    set from ""
+    set to ""
+    set anyAll {}
+    foreach line [::split $txt "\n"] {
+        set l [::string trim $line]
+        if {$l eq "" || [::string index $l 0] eq "#"} continue
+        if {[::regexp {GUI_Group:NodeLabelFrom[ \t]+([0-9]+)} $l -> v]} { set from $v; if {[::lsearch -exact $anyAll $v] < 0} { lappend anyAll $v }; continue }
+        if {[::regexp {GUI_Group:NodeLabelTo[ \t]+([0-9]+)} $l -> v]} { set to $v; if {[::lsearch -exact $anyAll $v] < 0} { lappend anyAll $v }; continue }
+        set add 0
+        if {[::string first "GUI_Group:Group " $l] >= 0} {
+            set grp $l
+        } elseif {[::string match "*GUI_Group:DetailedResultGroup" $l]} {
+            set grp "DETAILED"
+            set add 1
+        } elseif {[::string match "*GUI_Group:Add" $l]} {
+            set add 1
+        }
+        if {$add && [::string match -nocase "*DETAILED*" $grp]} {
+            foreach v [list $from $to] {
+                if {$v ne "" && [::lsearch -exact $res $v] < 0} { lappend res $v }
+            }
+        }
+    }
+    if {[::llength $res] > 0} { return $res }
+    return $anyAll
+}
+# tim ffj canh fps: uu tien cung ten voi fps, sau do cac ffj khac (bo qua file script cua chinh minh)
+proc ::hx_find_ffj_nodes {fdir stem} {
+    set cands {}
+    set same [::file join $fdir "$stem.ffj"]
+    if {[::file exists $same]} { lappend cands $same }
+    foreach f [::lsort [::glob -nocomplain -directory $fdir *.ffj]] {
+        set tail [::file tail $f]
+        if {[::string match -nocase "haigh_export*" $tail] || [::string match -nocase "run_haigh*" $tail]} continue
+        if {[::lsearch -exact $cands $f] < 0} { lappend cands $f }
+    }
+    ::hx_log "ffj ung vien: $cands"
+    foreach f $cands {
+        set n [::hx_nodes_in_ffj $f]
+        if {[::llength $n] > 0} {
+            ::hx_log "node lay tu ffj: $f ([::llength $n] node)"
+            return $n
+        }
+    }
+    return {}
+}
+proc ::hx_popup_missing {kind fdir stem} {
+    set msg ""
+    if {$kind eq "nofps"} {
+        append msg "Kh\u00f4ng x\u00e1c \u0111\u1ecbnh \u0111\u01b0\u1ee3c file fps v\u1eeba n\u1ea1p.
+
+H\u00e3y n\u1ea1p fps \u1edf Output module tr\u01b0\u1edbc, r\u1ed3i ch\u1ea1y l\u1ea1i File > Append > haigh_export_all.ffj."
+    } else {
+        append msg "Kh\u00f4ng t\u00ecm th\u1ea5y file ffj ch\u1ee9a danh s\u00e1ch node ID.\n\n"
+        append msg "H\u00e3y copy file .ffj (c\u00f3 node ID c\u1ea7n xu\u1ea5t) v\u00e0o C\u00d9NG TH\u01af M\u1ee4C v\u1edbi file fps:\n$fdir\n\n"
+        append msg "T\u00ean file n\u00ean tr\u00f9ng t\u00ean fps: $stem.ffj\n\n"
+        append msg "Sau \u0111\u00f3 ch\u1ea1y l\u1ea1i: File > Append > haigh_export_all.ffj."
+    }
+    ::catch {::tk_messageBox -icon warning -type ok -title "Haigh Export - thi\u1ebfu file ffj" -message $msg}
+}
 proc ::hx_main {} {
     set fps [::hx_find_fps]
     set fdir ""
@@ -339,6 +429,24 @@ proc ::hx_main {} {
     if {$::hx_dir eq ""} { return }
     set ::hx_fh [::open [::file join $::hx_dir hx_log.txt] w]
     ::hx_log "fps=$fps  out=$::hx_dir  prefix=$::hx_prefix"
+    if {[::llength $::hx_nodes_manual] > 0} {
+        set ::hx_nodes $::hx_nodes_manual
+    } elseif {$fps eq ""} {
+        ::hx_log "FATAL\tkhong xac dinh duoc file fps"
+        ::hx_popup_missing nofps "" ""
+        ::catch {::close $::hx_fh}
+        return
+    } else {
+        set stem [::file rootname [::file tail $fps]]
+        set ::hx_nodes [::hx_find_ffj_nodes $fdir $stem]
+        if {[::llength $::hx_nodes] == 0} {
+            ::hx_log "FATAL\tkhong co ffj chua node ID canh fps: $fdir"
+            ::hx_popup_missing noffj $fdir $stem
+            ::catch {::close $::hx_fh}
+            return
+        }
+    }
+    ::hx_log "NODE LIST tu ffj ([::llength $::hx_nodes]): $::hx_nodes"
     ::hx_start
 }
 ::after 500 ::hx_main
