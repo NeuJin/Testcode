@@ -1,0 +1,11 @@
+::uplevel #0 {
+    set ::probe_out "D:/femfat_probe/femfat_probe3.txt"
+    ::after 20000 {
+        if {[::catch {::source "D:/femfat_probe/femfat_probe3.tcl"} ::probe_err]} {
+            set ::ef [::open "D:/femfat_probe/probe3_err.txt" w]
+            ::puts $::ef $::probe_err
+            ::puts $::ef $::errorInfo
+            ::close $::ef
+        }
+    }
+}
