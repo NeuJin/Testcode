@@ -1,3 +1,3 @@
 cd D:\femfat_probe
-Select-String -Path femfat_probe2.txt -Pattern 'Haigh|Graph|Blt|PrintDialog|DetailedResultsNodeSelector|MainResultDialog' | ForEach-Object { $_.Line } | Set-Content probe_filtered.txt
-Select-String -Path femfat_probe2.txt -Pattern '^obj \.resultHaighDiagramDialog ' -Context 0,100 | ForEach-Object { $_.Line; $_.Context.PostContext } | Add-Content probe_filtered.txt
+Select-String -Path femfat_probe3.txt -Pattern '^(BLT=|image types|dialog state|graph exists|usage |postscript|snap->png|elements|markers|button |graph not mapped)' | % { $_.Line } | Set-Content probe3_short.txt
+Select-String -Path femfat_probe3.txt -Pattern '^(=== OBJECT|fn .*(print|update|dialog|invoke|apply|Apply|Value|node)|var )' | % { $_.Line } | Add-Content probe3_short.txt
