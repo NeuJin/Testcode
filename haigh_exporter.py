@@ -242,9 +242,25 @@ proc ::hx_run {} {
 }
 
 # ---- chay ----
-::after 1500 ::hx_run
-set rc [::catch {.femfat.hpane.rpane.main_sw.cv.dialogFr.bas-vi.inf.lf1.btHaigh.button invoke} msg]
-::hx_log "btHaigh invoke returned rc=$rc msg=$msg"
+set ::hx_btn ".femfat.hpane.rpane.main_sw.cv.dialogFr.bas-vi.inf.lf1.btHaigh.button"
+set ::hx_wait 0
+proc ::hx_start {} {
+    if {![::winfo exists $::hx_btn]} {
+        incr ::hx_wait
+        if {$::hx_wait == 1 || $::hx_wait % 10 == 0} {
+            ::hx_log "cho GUI/nut Haigh (lan $::hx_wait) children=[::catch {::winfo children .} ch; set ch]"
+        }
+        if {$::hx_wait < 240} { ::after 500 ::hx_start; return }
+        ::hx_log "FATAL\tkhong thay nut Haigh sau 120 s (GUI chua dung hoac chua nap ket qua)"
+        ::hx_finish
+        return
+    }
+    ::hx_log "nut Haigh da co sau [expr {$::hx_wait * 500}] ms"
+    ::after 1500 ::hx_run
+    set rc [::catch {$::hx_btn invoke} msg]
+    ::hx_log "btHaigh invoke returned rc=$rc msg=$msg"
+}
+::hx_start
 '''
 
 # --------------------------------------------------------------------------------------
@@ -435,7 +451,7 @@ def worker(cfg: dict, info: dict, q: "queue.Queue", stop: threading.Event, holde
     try:
         if cfg["run_mode"] == "batch":
             cwd = str(Path(cfg["ffj"]).parent) if cfg["ffj"] else str(work)
-            cmd = f'"{cfg["femfat_bat"]}" -job="{str(info["job"]).replace(chr(92), "/")}"'
+            cmd = f'"{cfg["femfat_bat"]}" -job="{str(info["job"]).replace(chr(92), "/")}" -gui'
             out = open(work / "femfat_stdout.txt", "wb")
             proc = subprocess.Popen(cmd, shell=True, cwd=cwd, stdout=out, stderr=subprocess.STDOUT)
             holder["proc"] = proc
