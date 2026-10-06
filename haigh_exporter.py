@@ -331,14 +331,12 @@ def validate(cfg: dict) -> list[str]:
     if not parse_nodes(cfg["nodes"]):
         errs.append("Chưa nhập node ID.")
     if not effective_outdir(cfg):
-        errs.append("Chưa có thư mục output (nhập fps/ffj để tự đặt, hoặc bỏ tick 'Tự động' và chọn thư mục).")
+        errs.append("Chưa có thư mục output (nhập fps để tự đặt, hoặc bỏ tick 'Tự động' và chọn thư mục).")
     if cfg["run_mode"] == "batch":
         if not cfg["femfat_bat"] or not Path(cfg["femfat_bat"]).exists():
             errs.append("Chưa chọn đúng file femfat.bat.")
-        if not cfg["ffj"] and not cfg["fps"]:
-            errs.append("Chế độ batch cần ffj hoặc fps.")
-        if cfg["ffj"] and not Path(cfg["ffj"]).exists():
-            errs.append("File ffj không tồn tại.")
+        if not cfg["fps"]:
+            errs.append("Chế độ batch cần file fps.")
         if cfg["fps"] and not Path(cfg["fps"]).exists():
             errs.append("File fps không tồn tại.")
         if cfg["fps"] and not any("@FPS@" in x for x in clean_template(cfg["load_template"])):
@@ -380,8 +378,6 @@ def build_job(cfg: dict, work: Path, outdir: Path, tcl_path: Path) -> str:
     L.append('proc ::hx_jt {s} { ::catch { set f [::open $::hx_trace a]; ::puts $f $s; ::close $f } }')
     L.append('::hx_jt "job bat dau"')
     if cfg["run_mode"] == "batch":
-        if cfg["ffj"]:
-            L.append(f'if {{[::catch {{::source {tcl_str(cfg["ffj"])}}} ::hx_e]}} {{ ::hx_jt "LOI ffj: $::hx_e" }} else {{ ::hx_jt "ffj OK" }}')
         if cfg["fps"] and cfg["load_template"].strip():
             fps = str(cfg["fps"]).replace("\\", "/")
             for ln in clean_template(cfg["load_template"]):
@@ -450,7 +446,7 @@ def worker(cfg: dict, info: dict, q: "queue.Queue", stop: threading.Event, holde
     proc = None
     try:
         if cfg["run_mode"] == "batch":
-            cwd = str(Path(cfg["ffj"]).parent) if cfg["ffj"] else str(work)
+            cwd = str(Path(cfg["fps"]).parent) if cfg["fps"] else str(work)
             cmd = f'"{cfg["femfat_bat"]}" -job="{str(info["job"]).replace(chr(92), "/")}" -gui'
             out = open(work / "femfat_stdout.txt", "wb")
             proc = subprocess.Popen(cmd, shell=True, cwd=cwd, stdout=out, stderr=subprocess.STDOUT)
@@ -626,7 +622,6 @@ class App:
         c = self.cfg
 
         self.v_femfat = tk.StringVar(value=c["femfat_bat"])
-        self.v_ffj = tk.StringVar(value=c["ffj"])
         self.v_fps = tk.StringVar(value=c["fps"])
         self.v_out_auto = tk.BooleanVar(value=c["out_auto"])
         self.v_out = tk.StringVar(value=c["out_dir"])
@@ -645,7 +640,6 @@ class App:
             return e
 
         path_row(0, "FEMFAT (femfat.bat)", self.v_femfat, lambda: self.pick(self.v_femfat, [("femfat.bat", "*.bat"), ("Tất cả", "*.*")]))
-        path_row(1, "File ffj (tuỳ chọn)", self.v_ffj, lambda: self.pick(self.v_ffj, [("FEMFAT job", "*.ffj"), ("Tất cả", "*.*")]))
         path_row(2, "File fps (kết quả)", self.v_fps, lambda: self.pick(self.v_fps, [("FEMFAT fps", "*.fps"), ("Tất cả", "*.*")]))
 
         ttk.Label(main, text="Thư mục ảnh output").grid(row=3, column=0, sticky="w", pady=2)
@@ -654,10 +648,9 @@ class App:
         self.e_out.bind("<FocusOut>", lambda ev: self.v_out.set(norm_path(self.v_out.get())))
         self.b_out = ttk.Button(main, text="Chọn…", width=8, command=self.pick_out)
         self.b_out.grid(row=3, column=2, pady=2)
-        ttk.Checkbutton(main, text="Tự động (cạnh file fps/ffj: <tên>_haigh)", variable=self.v_out_auto,
+        ttk.Checkbutton(main, text="Tự động (cạnh file fps: <tên>_haigh)", variable=self.v_out_auto,
                         command=self.refresh_out).grid(row=4, column=1, sticky="w", padx=6)
         self.v_fps.trace_add("write", lambda *a: self.refresh_out())
-        self.v_ffj.trace_add("write", lambda *a: self.refresh_out())
 
         ttk.Label(main, text="Node ID").grid(row=5, column=0, sticky="nw", pady=4)
         nf = ttk.Frame(main)
@@ -678,7 +671,7 @@ class App:
         ttk.Radiobutton(opt, text="Cả hai", variable=self.v_mode, value="both").grid(row=1, column=3, sticky="w", pady=(6, 0))
         ttk.Label(opt, text="Cách chạy:").grid(row=2, column=0, sticky="w", pady=(6, 0))
         ttk.Radiobutton(opt, text="Append (FEMFAT đã mở, đã nạp kết quả) — đã kiểm chứng", variable=self.v_run, value="append").grid(row=2, column=1, columnspan=3, sticky="w", pady=(6, 0))
-        ttk.Radiobutton(opt, text="Batch (app tự chạy femfat.bat, cần ffj/lệnh nạp fps) — chưa kiểm chứng", variable=self.v_run, value="batch").grid(row=3, column=1, columnspan=3, sticky="w")
+        ttk.Radiobutton(opt, text="Batch (app tự chạy femfat.bat, chỉ cần fps + lệnh nạp fps) — chưa kiểm chứng", variable=self.v_run, value="batch").grid(row=3, column=1, columnspan=3, sticky="w")
 
         adv = ttk.LabelFrame(main, text="Nâng cao: lệnh nạp fps vào FEMFAT (chỉ cần cho chế độ batch; dùng @FPS@ thay cho đường dẫn)", padding=8)
         adv.grid(row=7, column=0, columnspan=3, sticky="ew", pady=4)
@@ -726,7 +719,7 @@ class App:
 
     def refresh_out(self):
         if self.v_out_auto.get():
-            self.v_out.set(default_outdir(self.v_fps.get(), self.v_ffj.get()))
+            self.v_out.set(default_outdir(self.v_fps.get(), ""))
             self.e_out.state(["disabled"])
             self.b_out.state(["disabled"])
         else:
@@ -736,7 +729,7 @@ class App:
     def collect(self) -> dict:
         return {
             "femfat_bat": norm_path(self.v_femfat.get()),
-            "ffj": norm_path(self.v_ffj.get()),
+            "ffj": "",
             "fps": norm_path(self.v_fps.get()),
             "out_auto": bool(self.v_out_auto.get()),
             "out_dir": norm_path(self.v_out.get()),
