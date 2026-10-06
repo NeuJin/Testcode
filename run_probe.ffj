@@ -1,0 +1,3 @@
+set ::probe_out "D:/femfat_probe/femfat_probe.txt"
+catch {source "D:/femfat_probe/femfat_probe.tcl"} probe_err
+puts "probe: $probe_err"
