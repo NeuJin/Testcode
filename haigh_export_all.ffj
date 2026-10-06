@@ -1,5 +1,6 @@
 # ======================================================================
 # haigh_export_all.ffj  --  FEMFAT 2024.1: xuat anh Local Haigh Diagram (full winop)
+# (Popup xac nhan bang tieng Anh se hien truoc khi chay.)
 # CACH DUNG: mo FEMFAT -> vao Output module -> nap fps -> (vao trang Visualization)
 #            -> File > Append... -> chon file nay. Khong can thao tac gi them.
 # Quy tac co dinh: Critical Point (cham do) luon BAT; luon xuat anh FULL (winop).
@@ -421,18 +422,12 @@ proc ::hx_find_ffj_nodes {fdir stem} {
     return {}
 }
 proc ::hx_popup_missing {kind fdir stem} {
-    set msg ""
     if {$kind eq "nofps"} {
-        append msg "Kh\u00f4ng x\u00e1c \u0111\u1ecbnh \u0111\u01b0\u1ee3c file fps v\u1eeba n\u1ea1p.
-
-H\u00e3y n\u1ea1p fps \u1edf Output module tr\u01b0\u1edbc, r\u1ed3i ch\u1ea1y l\u1ea1i File > Append > haigh_export_all.ffj."
+        set msg "Could not determine which fps file is loaded.\n\nLoad the fps file in the Output module first, then run File > Append > haigh_export_all.ffj again."
     } else {
-        append msg "Kh\u00f4ng t\u00ecm th\u1ea5y file ffj ch\u1ee9a danh s\u00e1ch node ID.\n\n"
-        append msg "H\u00e3y copy file .ffj (c\u00f3 node ID c\u1ea7n xu\u1ea5t) v\u00e0o C\u00d9NG TH\u01af M\u1ee4C v\u1edbi file fps:\n$fdir\n\n"
-        append msg "T\u00ean file n\u00ean tr\u00f9ng t\u00ean fps: $stem.ffj\n\n"
-        append msg "Sau \u0111\u00f3 ch\u1ea1y l\u1ea1i: File > Append > haigh_export_all.ffj."
+        set msg "No ffj file containing the node list was found.\n\nPlease copy the .ffj file (with the node IDs to export) into the SAME FOLDER as the fps file:\n$fdir\n\nRecommended name: $stem.ffj\n\nThen run File > Append > haigh_export_all.ffj again."
     }
-    ::catch {::tk_messageBox -icon warning -type ok -title "Haigh Export - thi\u1ebfu file ffj" -message $msg}
+    ::catch {::tk_messageBox -icon warning -type ok -title "Haigh Export - ffj file missing" -message $msg}
 }
 proc ::hx_main {} {
     set fps [::hx_find_fps]
@@ -453,6 +448,30 @@ proc ::hx_main {} {
     if {$::hx_dir eq ""} { return }
     set ::hx_fh [::open [::file join $::hx_dir hx_log.txt] w]
     ::hx_log "fps=$fps  out=$::hx_dir  prefix=$::hx_prefix"
+    # ---- confirmation popup (English) ----
+    if {$fps ne ""} {
+        set stem0 [::file rootname [::file tail $fps]]
+        set pre [::hx_find_ffj_nodes $fdir $stem0]
+        if {[::llength $pre] > 0} {
+            set st1 "FOUND ([::llength $pre] node IDs detected)"
+        } else {
+            set st1 "NOT FOUND - please copy the ffj file into: $fdir"
+        }
+    } else {
+        set st1 "UNKNOWN - fps file not detected"
+    }
+    set cmsg "Please confirm before the export starts:\n\n"
+    append cmsg "1. Is the ffj file (with the node IDs) in the SAME FOLDER as the fps file?\n"
+    append cmsg "     Automatic check: $st1\n\n"
+    append cmsg "2. Have you already opened a Haigh diagram and turned ON the Critical Point (red dot) option?\n"
+    append cmsg "     (FEMFAT remembers this setting; the script relies on it.)\n\n"
+    append cmsg "Click OK to start the export, or Cancel to stop."
+    set ans [::tk_messageBox -icon question -type okcancel -default ok -title "Haigh Export - confirm" -message $cmsg]
+    if {$ans ne "ok"} {
+        ::hx_log "Cancelled by user at confirmation popup"
+        ::catch {::close $::hx_fh}
+        return
+    }
     if {[::llength $::hx_nodes_manual] > 0} {
         set ::hx_nodes $::hx_nodes_manual
     } elseif {$fps eq ""} {
