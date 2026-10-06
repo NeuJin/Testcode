@@ -19,7 +19,9 @@ from __future__ import annotations
 
 import glob
 import json
+import ntpath
 import os
+import posixpath
 import queue
 import re
 import subprocess
@@ -250,6 +252,16 @@ set rc [::catch {.femfat.hpane.rpane.main_sw.cv.dialogFr.bas-vi.inf.lf1.btHaigh.
 # --------------------------------------------------------------------------------------
 
 
+def norm_path(p) -> str:
+    """Chuan hoa duong dan: bo dau nhay/khoang trang thua, thong nhat dau / va \\ theo he dieu hanh."""
+    p = str(p or "").strip().strip('"').strip("'").strip()
+    if not p:
+        return ""
+    if os.name == "nt":
+        return ntpath.normpath(p.replace("/", "\\"))
+    return posixpath.normpath(p.replace("\\", "/"))
+
+
 def tcl_str(s) -> str:
     """Chuoi Tcl trong ngoac kep, dung dau / cho duong dan."""
     s = str(s).replace("\\", "/")
@@ -267,7 +279,7 @@ def parse_nodes(text: str) -> list[str]:
 
 
 def default_outdir(fps: str, ffj: str) -> str:
-    base = fps or ffj
+    base = norm_path(fps) or norm_path(ffj)
     if not base:
         return ""
     p = Path(base)
@@ -281,7 +293,7 @@ def safe_prefix(fps: str, ffj: str) -> str:
 
 def effective_outdir(cfg: dict) -> str:
     if (not cfg["out_auto"]) and cfg["out_dir"].strip():
-        return cfg["out_dir"].strip()
+        return norm_path(cfg["out_dir"])
     return default_outdir(cfg["fps"], cfg["ffj"])
 
 
@@ -313,10 +325,22 @@ def validate(cfg: dict) -> list[str]:
             errs.append("File ffj không tồn tại.")
         if cfg["fps"] and not Path(cfg["fps"]).exists():
             errs.append("File fps không tồn tại.")
-        if cfg["fps"] and not cfg["load_template"].strip():
+        if cfg["fps"] and not any("@FPS@" in x for x in clean_template(cfg["load_template"])):
             errs.append("Chưa có 'Lệnh nạp fps' (mục Nâng cao). Dùng nút 'Ghi lệnh nạp fps' để lấy lệnh một lần, "
                         "hoặc dùng chế độ 'append'.")
     return errs
+
+
+def clean_template(text: str) -> list[str]:
+    """Chi giu cac lenh GHI (setValue...), bo getValue (chi doc) va dong trung lien tiep."""
+    out: list[str] = []
+    for ln in text.splitlines():
+        ln = ln.strip()
+        if not ln or ln.startswith("#") or re.match(r"^(::)?(doc0\s+)?getValue\b", ln):
+            continue
+        if not out or out[-1] != ln:
+            out.append(ln)
+    return out
 
 
 def build_job(cfg: dict, work: Path, outdir: Path, tcl_path: Path) -> str:
@@ -336,11 +360,21 @@ def build_job(cfg: dict, work: Path, outdir: Path, tcl_path: Path) -> str:
         f"set ::hx_do_graph {do_graph}",
         f"set ::hx_do_full {do_full}",
     ]
+    L.append(f"set ::hx_trace {tcl_str(work / 'hx_jobtrace.txt')}")
+    L.append('proc ::hx_jt {s} { ::catch { set f [::open $::hx_trace a]; ::puts $f $s; ::close $f } }')
+    L.append('::hx_jt "job bat dau"')
     if cfg["run_mode"] == "batch":
         if cfg["ffj"]:
-            L.append(f"source {tcl_str(cfg['ffj'])}")
+            L.append(f'if {{[::catch {{::source {tcl_str(cfg["ffj"])}}} ::hx_e]}} {{ ::hx_jt "LOI ffj: $::hx_e" }} else {{ ::hx_jt "ffj OK" }}')
         if cfg["fps"] and cfg["load_template"].strip():
-            L.append(cfg["load_template"].replace("@FPS@", str(cfg["fps"]).replace("\\", "/")))
+            fps = str(cfg["fps"]).replace("\\", "/")
+            for ln in clean_template(cfg["load_template"]):
+                if "{@FPS@}" in ln:
+                    ln = ln.replace("@FPS@", fps)
+                else:
+                    ln = ln.replace("@FPS@", "{" + fps + "}")
+                L.append(f'if {{[::catch {{{ln}}} ::hx_e]}} {{ ::hx_jt "LOI lenh nap: $::hx_e" }} else {{ ::hx_jt "nap OK" }}')
+    L.append('::hx_jt "chuan bi chay script xuat anh"')
     L += [
         f"set ::hx_tcl {tcl_str(tcl_path)}",
         f"set ::hx_errfile {tcl_str(work / 'hx_error.txt')}",
@@ -392,7 +426,7 @@ def worker(cfg: dict, info: dict, q: "queue.Queue", stop: threading.Event, holde
     work: Path = info["work"]
     log_path: Path = info["log"]
     err_path: Path = info["err"]
-    for p in (log_path, err_path):
+    for p in (log_path, err_path, work / "hx_jobtrace.txt"):
         try:
             p.unlink()
         except FileNotFoundError:
@@ -447,7 +481,14 @@ def worker(cfg: dict, info: dict, q: "queue.Queue", stop: threading.Event, holde
             if proc is not None and proc.poll() is not None:
                 q.put(("log", f"FEMFAT đã thoát (mã {proc.returncode})."))
                 if not done and not log_path.exists():
-                    q.put(("log", "Không có log: FEMFAT thoát trước khi chạy script (xem femfat_stdout.txt)."))
+                    q.put(("log", "Không có log: FEMFAT thoát trước khi chạy script."))
+                    for nm in ("hx_jobtrace.txt", "femfat_stdout.txt"):
+                        fp = work / nm
+                        try:
+                            txt = fp.read_text(encoding="utf-8", errors="replace").strip()
+                        except Exception:
+                            txt = "(không có file)"
+                        q.put(("log", f"--- {nm} (cuối) ---\n" + "\n".join(txt.splitlines()[-25:])))
                 # doc not phan log con lai roi thoat
                 if log_path.exists():
                     with open(log_path, "rb") as f:
@@ -511,6 +552,8 @@ def recorded_candidates(log: Path) -> tuple[list[str], int]:
 def to_template(lines: list[str]) -> str:
     out = []
     for ln in lines:
+        if re.match(r"^\s*(::)?(doc0\s+)?getValue\b", ln):
+            continue
         ln = re.sub(r"^\s*(::)?doc0\s+", "", ln)
         ln = re.sub(r"\{[^{}]*\.fps\}", "{@FPS@}", ln, flags=re.I)
         ln = re.sub(r"[^\s{}\"]+\.fps", "@FPS@", ln, flags=re.I)
@@ -579,6 +622,7 @@ class App:
             ttk.Label(main, text=label).grid(row=row, column=0, sticky="w", pady=2)
             e = ttk.Entry(main, textvariable=var)
             e.grid(row=row, column=1, sticky="ew", padx=6, pady=2)
+            e.bind("<FocusOut>", lambda ev, v=var: v.set(norm_path(v.get())))
             ttk.Button(main, text="Chọn…", command=cmd, width=8).grid(row=row, column=2, pady=2)
             if hint:
                 ttk.Label(main, text=hint, foreground="#666").grid(row=row + 1, column=1, sticky="w", padx=6)
@@ -591,6 +635,7 @@ class App:
         ttk.Label(main, text="Thư mục ảnh output").grid(row=3, column=0, sticky="w", pady=2)
         self.e_out = ttk.Entry(main, textvariable=self.v_out)
         self.e_out.grid(row=3, column=1, sticky="ew", padx=6, pady=2)
+        self.e_out.bind("<FocusOut>", lambda ev: self.v_out.set(norm_path(self.v_out.get())))
         self.b_out = ttk.Button(main, text="Chọn…", width=8, command=self.pick_out)
         self.b_out.grid(row=3, column=2, pady=2)
         ttk.Checkbutton(main, text="Tự động (cạnh file fps/ffj: <tên>_haigh)", variable=self.v_out_auto,
@@ -656,16 +701,16 @@ class App:
     def pick(self, var, types):
         p = filedialog.askopenfilename(filetypes=types)
         if p:
-            var.set(p)
+            var.set(norm_path(p))
 
     def pick_out(self):
         p = filedialog.askdirectory()
         if p:
-            self.v_out.set(p)
+            self.v_out.set(norm_path(p))
 
     def refresh_out(self):
         if self.v_out_auto.get():
-            self.v_out.set(default_outdir(self.v_fps.get().strip(), self.v_ffj.get().strip()))
+            self.v_out.set(default_outdir(self.v_fps.get(), self.v_ffj.get()))
             self.e_out.state(["disabled"])
             self.b_out.state(["disabled"])
         else:
@@ -674,11 +719,11 @@ class App:
 
     def collect(self) -> dict:
         return {
-            "femfat_bat": self.v_femfat.get().strip(),
-            "ffj": self.v_ffj.get().strip(),
-            "fps": self.v_fps.get().strip(),
+            "femfat_bat": norm_path(self.v_femfat.get()),
+            "ffj": norm_path(self.v_ffj.get()),
+            "fps": norm_path(self.v_fps.get()),
             "out_auto": bool(self.v_out_auto.get()),
-            "out_dir": self.v_out.get().strip(),
+            "out_dir": norm_path(self.v_out.get()),
             "nodes": self.t_nodes.get("1.0", "end").strip(),
             "crit": bool(self.v_crit.get()),
             "mode": self.v_mode.get(),
