@@ -13,7 +13,7 @@ set ::hx_dir_override ""       ;# de trong = tao thu muc "out" canh file fps
 set ::hx_dir_fallback "D:/femfat_probe/haigh_out"
 set ::hx_max_nodes 500         ;# gioi han an toan khi duyet node
 # ---------------- co dinh theo quy tac ----------------
-set ::hx_crit_on 1
+set ::hx_crit_highlight 1       ;# 1 = luon bat Critical Point (theo quy tac)
 set ::hx_hide_when_off 0
 set ::hx_do_graph 0
 set ::hx_do_full 1
@@ -86,27 +86,42 @@ proc ::hx_click {w} {
 proc ::hx_set_crit {want} {
     set d .resultHaighDiagramDialog.childsite.lf1.legend
     set k [::hx_crit_row]
-    if {$k == 0} { ::hx_log "crit: khong thay hang Critical trong legend"; return 0 }
+    if {$k == 0} { ::hx_log "crit: khong thay hang 'Critical' trong legend"; return 0 }
     set cur [::hx_crit_on $k]
+    ::hx_log "crit: row=$k highlighted=$cur want=$want"
     if {$cur == $want} { return 1 }
     foreach w [list $d.cv.lb$k $d.cv.leg$k] {
         ::catch {::hx_click $w} msg
-        if {[::hx_crit_on $k] == $want} { return 1 }
+        if {[::hx_crit_on $k] == $want} { ::hx_log "crit: doi trang thai bang click vao $w"; return 1 }
     }
     foreach arg [list {} $k] {
         set rc [::catch {$d toggleHighlightGraph {*}$arg} msg]
         ::update
+        ::hx_log "crit: toggleHighlightGraph {$arg} rc=$rc msg=$msg now=[::hx_crit_on $k]"
         if {$rc == 0 && [::hx_crit_on $k] == $want} { return 1 }
     }
     return 0
+}
+
+
+
+
+proc ::hx_dump_legend {} {
+    set cv .resultHaighDiagramDialog.childsite.lf1.legend.cv
+    ::catch {::hx_log "legend cv bg=[$cv cget -background]"}
+    foreach i {1 2 3 4} {
+        set line "legend row $i:"
+        ::catch {append line " text='[$cv.lb$i cget -text]' lb_bg=[$cv.lb$i cget -background]"}
+        ::catch {append line " leg_bg=[$cv.leg$i cget -background]"}
+        ::hx_log $line
+    }
 }
 proc ::hx_crit_elements {} {
     set g .resultHaighDiagramDialog.childsite.lf1.graph.graph
     set res {}
     foreach el [$g element names] {
-        set lab ""
-        ::catch {set lab [$g element cget $el -label]}
-        if {[::string match -nocase "*critical*" $lab] || [::string match -nocase "*crit*" $el]} { lappend res $el }
+        if {[::catch {$g element cget $el -label} lab]} continue
+        if {[::string match -nocase "*critical*" $lab]} { lappend res $el }
     }
     return $res
 }
@@ -122,33 +137,22 @@ proc ::hx_dump_elements {tag} {
 }
 proc ::hx_force_big {} {
     set g .resultHaighDiagramDialog.childsite.lf1.graph.graph
-    set els [::hx_crit_elements]
-    if {[::llength $els] == 0} { ::hx_log "crit: KHONG tim thay element Critical Point tren do thi" }
-    foreach el $els {
+    foreach el [$g element names] {
+        if {[::catch {$g element cget $el -label} lab]} continue
+        if {![::string match -nocase "*critical*" $lab]} continue
         set rc [::catch {
-            ::catch {$g element configure $el -hide no}
-            set px 0
-            ::catch {set px [$g element cget $el -pixels]}
-            if {![::string is double -strict $px] || $px < 14} {
-                $g element configure $el -pixels 14
-            }
-            ::catch {$g element configure $el -scalesymbols no}
+            set px [$g element cget $el -pixels]
+            $g element configure $el -pixels [expr {$px < 14 ? 14 : $px}]
         } msg]
-        ::hx_log "crit: force big element $el rc=$rc $msg pixels=[::catch {$g element cget $el -pixels} px2; set px2]"
+        ::hx_log "force big: element $el label=$lab rc=$rc msg=$msg"
     }
 }
 proc ::hx_apply_crit {} {
-    set g .resultHaighDiagramDialog.childsite.lf1.graph.graph
-    if {$::hx_crit_on} {
-        ::catch {::hx_set_crit 1}
-        ::update
-        # luon phong to ky hieu diem do (khong phu thuoc nhan dien trang thai highlight)
+    if {$::hx_crit_highlight < 0} { return }
+    set ok [::hx_set_crit $::hx_crit_highlight]
+    if {!$ok && $::hx_crit_highlight == 1} {
+        ::hx_log "crit: khong bat duoc bang GUI -> dung cach du phong (phong to ky hieu)"
         ::hx_force_big
-    } else {
-        ::catch {::hx_set_crit 0}
-        if {$::hx_hide_when_off} {
-            foreach el [::hx_crit_elements] { ::catch {$g element configure $el -hide yes} }
-        }
     }
     ::update
 }
@@ -166,12 +170,9 @@ proc ::hx_one {node} {
         ::hx_log "RESULT\t$node\tFAIL\t-\t-\tnode khong co trong DETAILED RESULTS hoac do thi khong doi"
         return
     }
-    if {![::info exists ::hx_dumped]} { ::hx_dump_elements truoc; set ::hx_dumped 1 }
+    if {![::info exists ::hx_dumped]} { ::catch {::hx_dump_legend}; ::hx_dump_elements truoc; set ::hx_dumped 1 }
     ::hx_apply_crit
-    ::update
-    ::after 300
-    ::update
-    ::hx_force_big
+    ::catch {::hx_dump_legend}
     ::hx_dump_elements sau
     ::update
     ::catch {::raise $d}
